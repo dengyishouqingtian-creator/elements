@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>四象观察者 ELEMENTS</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-inner">
+    <div class="brand-en">ELEMENTS</div>
+    <h1>四象观察者</h1>
+    <p class="hero-sub">记录真实行为 · 生成可修正的画像 · 逐步理解身边的人</p>
+    <div class="elements-row">
+      <div class="el-card" style="--c:#4C91C8"><span class="el-name">水</span><span class="el-desc">感受与关系</span></div>
+      <div class="el-card" style="--c:#E58B48"><span class="el-name">火</span><span class="el-desc">行动与目标</span></div>
+      <div class="el-card" style="--c:#78966C"><span class="el-name">土</span><span class="el-desc">秩序与责任</span></div>
+      <div class="el-card" style="--c:#8A83B8"><span class="el-name">风</span><span class="el-desc">探索与自由</span></div>
+    </div>
+    <p class="hero-note">这不是心理测验，也不能读心。所有结论都基于你记录的证据，会随新记录进化。</p>
+  </div>
+</header>
+
+<main class="app">
+  <section class="toolbar">
+    <h2>人物档案</h2>
+    <div class="toolbar-btns">
+      <button id="btnDemo" class="btn btn-ghost">载入示例人物A</button>
+      <button id="btnAddPerson" class="btn btn-primary">+ 新建人物</button>
+    </div>
+  </section>
+
+  <section id="personList" class="person-list"></section>
+  <p id="emptyHint" class="empty-hint">还没有人物。点“新建人物”建第一个档案，或先载入示例人物A看看效果。</p>
+
+  <section id="detail" class="detail hidden">
+    <div class="detail-head">
+      <button id="btnBack" class="btn btn-ghost">← 返回列表</button>
+      <div class="detail-actions">
+        <button id="btnEditPerson" class="btn btn-ghost">编辑人物</button>
+        <button id="btnDeletePerson" class="btn btn-danger">删除人物</button>
+      </div>
+    </div>
+    <h3 id="detailTitle"></h3>
+    <p id="detailMeta" class="detail-meta"></p>
+
+    <div class="detail-grid">
+      <div class="panel">
+        <div class="panel-head">
+          <h4>观察记录</h4>
+          <button id="btnAddObs" class="btn btn-primary btn-sm">+ 添加记录</button>
+        </div>
+        <div id="obsList"></div>
+      </div>
+
+      <div class="panel report-panel">
+        <div class="panel-head"><h4>分析报告</h4></div>
+        <div id="report"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="data-bar">
+    <h4>数据管理（本地存储）</h4>
+    <div class="toolbar-btns">
+      <button id="btnExport" class="btn btn-ghost">导出 JSON 备份</button>
+      <label class="btn btn-ghost file-label">导入 JSON<input type="file" id="fileImport" accept=".json" hidden></label>
+      <button id="btnClearAll" class="btn btn-danger">清空全部数据</button>
+    </div>
+    <p class="data-note">数据只存在你这台设备的浏览器里（localStorage）。人物请用代号，不要录真实姓名、电话、地址。正式使用前请定期导出备份。</p>
+  </section>
+</main>
+
+<!-- 人物表单 -->
+<dialog id="dlgPerson">
+  <form method="dialog" class="form" id="formPerson">
+    <h3 id="personFormTitle">新建人物</h3>
+    <label>代号 *<input id="fAlias" required maxlength="30" placeholder="如：同组同学A"></label>
+    <label>关系 *
+      <select id="fRel" required>
+        <option value="朋友">朋友</option><option value="同学">同学</option>
+        <option value="室友">室友</option><option value="家人">家人</option>
+        <option value="同事">同事</option><option value="其他">其他</option>
+      </select>
+    </label>
+    <label>简短描述<input id="fDesc" maxlength="120" placeholder="一句话背景，不含敏感信息"></label>
+    <div class="form-btns">
+      <button type="button" class="btn btn-ghost" data-close="dlgPerson">取消</button>
+      <button type="submit" class="btn btn-primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 记录表单 -->
+<dialog id="dlgObs">
+  <form method="dialog" class="form" id="formObs">
+    <h3 id="obsFormTitle">添加观察记录</h3>
+    <label>行为描述 *<textarea id="oContent" required rows="3" maxlength="300" placeholder="写具体做了什么，不写结论性标签"></textarea></label>
+    <label>情境 *<input id="oContext" required maxlength="30" placeholder="如：小组讨论 / 课程项目 / 社团活动"></label>
+    <label>日期 *<input id="oDate" type="date" required></label>
+    <label>信息来源 *
+      <select id="oSource" required>
+        <option value="observed">亲眼观察（计分）</option>
+        <option value="self_report">对方亲口表达（计分）</option>
+        <option value="inference">我的推测（不计分，只作待验证假设）</option>
+      </select>
+    </label>
+    <label>事件ID（同一件事多条记录填同一个，用于去重）
+      <input id="oEvent" maxlength="50" placeholder="留空自动生成">
+    </label>
+    <fieldset class="evidence-box">
+      <legend>关联元素（每个元素：轻度1分 / 明显2分，可多选）</legend>
+      <div class="ev-row"><label><input type="checkbox" class="ev-check" data-el="water"> 水·感受关系</label>
+        <select class="ev-weight" data-el="water"><option value="1">轻度 1</option><option value="2">明显 2</option></select></div>
+      <div class="ev-row"><label><input type="checkbox" class="ev-check" data-el="fire"> 火·行动目标</label>
+        <select class="ev-weight" data-el="fire"><option value="1">轻度 1</option><option value="2">明显 2</option></select></div>
+      <div class="ev-row"><label><input type="checkbox" class="ev-check" data-el="earth"> 土·秩序责任</label>
+        <select class="ev-weight" data-el="earth"><option value="1">轻度 1</option><option value="2">明显 2</option></select></div>
+      <div class="ev-row"><label><input type="checkbox" class="ev-check" data-el="air"> 风·探索自由</label>
+        <select class="ev-weight" data-el="air"><option value="1">轻度 1</option><option value="2">明显 2</option></select></div>
+    </fieldset>
+    <label>备注（其他可能解释）<input id="oNotes" maxlength="200" placeholder="如：也可能只是他在履行组长职责"></label>
+    <div class="form-btns">
+      <button type="button" class="btn btn-ghost" data-close="dlgObs">取消</button>
+      <button type="submit" class="btn btn-primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<footer class="foot">ELEMENTS V1 原型 · 本工具生成的画像是基于有限观察的探索性结果，不是心理诊断或人格测量。</footer>
+<script src="app.js"></script>
+</body>
+</html>
