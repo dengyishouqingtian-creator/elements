@@ -65,13 +65,76 @@ const MOOD_RULES = {
   'air+anxiety': ['风象摇摆', '想法多又拿不定主意，在几个选项之间摇摆。']
 };
 
+
+/* ---------- 知识包 v2 扩充（由四象概念蒸馏的表达层：性格词 + 口语词） ---------- */
+const EXTRA_EL = {
+  water: { strong: ['善解人意', '重感情', '心疼'],
+    words: ['温柔', '心细', '细腻', '体谅', '挂念', '牵挂', '念旧', '黏人', '社恐', '内向', '慢热', '交朋友', '聊心里话', '知心', '贴心', '心软', '共鸣', '被理解', '安全感', '归属感', '亲密', '疏离', '失望', '被忽视', '主动联系', '回消息', '陪聊'] },
+  fire: { strong: ['说干就干', '争强好胜', '雷厉风行'],
+    words: ['努力', '上进', '要强', '奋斗', '拼命', '执行力', '风风火火', '急性子', '直来直去', '干脆', '热情', '带队', '组长', '队长', '出头', '表现欲', '不服', '较劲', '争', '抢着', '第一个', '冲', '干', '行动派', '目标感'] },
+  earth: { strong: ['自律', '坚持不懈', '有条理'],
+    words: ['努力学习', '勤奋', '规划', '时间表', '准时', '严谨', '固执', '保守', '抠细节', '条理', '规矩', '靠谱', '稳', '慢条斯理', '不慌', '从容', '冷静', '理性', '务实', '节俭', '存钱', '复习', '预习', '做笔记', '打卡', '日程', '安排得', '井然有序'] },
+  air: { strong: ['脑洞大', '想象力', '喜新厌旧'],
+    words: ['开朗', '幽默', '脑洞', '稀奇古怪', '新鲜感', '三分钟热度', '放飞', '洒脱', '不拘小节', '讨厌被管', '追求自由', '随心所欲', '天马行空', '点子多', '鬼点子', '好奇心', '什么都想试', '换来换去', '坐不住', '爱玩', '会玩', '有趣', '好玩', '无拘无束'] }
+};
+const EXTRA_EMO = {
+  joy: ['乐呵呵', '欣慰', '美滋滋', '眉开眼笑', '兴高采烈'],
+  excitement: ['跃跃欲试', '摩拳擦掌', '按捺不住', '热血沸腾'],
+  calm: ['稳如泰山', '心平气和', '不慌不忙', '悠然'],
+  anger: ['发脾气', '上火', '气愤', '不爽', '怼', '翻脸', '暴躁', '窝火'],
+  anxiety: ['着急', '忐忑', '坐立不安', '手心出汗', '七上八下', '提心吊胆'],
+  sadness: ['心情不好', '郁闷', '憋屈', '失望', '发呆', '沉默', '不说话', '一个人待着', '心灰意冷', '红了眼眶'],
+  tired: ['无精打采', '哈欠', '眼皮打架', '心累', '撑不住', '想躺平']
+};
+for (const k of Object.keys(EXTRA_EL)) {
+  EL_LEXICON[k].strong.push(...EXTRA_EL[k].strong);
+  EL_LEXICON[k].words.push(...EXTRA_EL[k].words);
+}
+for (const c of Object.keys(EXTRA_EMO)) EMOTIONS[c].words.push(...EXTRA_EMO[c]);
+
+/* 同义词归一：口语说法 -> 词库标准说法，匹配前先替换（显示命中词时为标准说法） */
+const SYNONYMS = {
+  '心情不好': '难过', '不开心': '难过', '发脾气': '生气', '睡不着': '失眠',
+  '没意思': '无聊', '心累': '累', '气死': '生气', '急死': '焦虑',
+  '想太多': '焦虑', '压力山大': '压力大', '美滋滋': '开心', '乐开花': '开心',
+  '红眼眶': '哭', '红了眼': '哭', '掉眼泪': '哭', '抹眼泪': '哭',
+  '不理人': '冷落', '不搭理': '冷落', '黏着': '黏人', '抢着做': '主动'
+};
+function normalizeText(t) {
+  let out = t;
+  for (const k of Object.keys(SYNONYMS)) out = out.split(k).join(SYNONYMS[k]);
+  return out;
+}
+
+/* 模糊弱匹配：精确零命中时用字组相似度兜底，只给弱分（1 分）并标注 weak */
+function fuzzyHits(text, k) {
+  const lex = EL_LEXICON[k];
+  const all = [...lex.strong, ...lex.words];
+  const found = [];
+  const bigrams = new Set();
+  for (let i = 0; i < text.length - 1; i++) bigrams.add(text.slice(i, i + 2));
+  for (const w of all) {
+    if (w.length < 2 || text.includes(w)) continue;
+    if (w.length === 2) {
+      const i1 = text.indexOf(w[0]), i2 = text.indexOf(w[1]);
+      if (i1 !== -1 && i2 !== -1 && Math.abs(i1 - i2) <= 3) found.push(w);
+    } else {
+      let hit = 0, tot = 0;
+      for (let i = 0; i < w.length - 1; i++) { tot++; if (bigrams.has(w.slice(i, i + 2))) hit++; }
+      if (tot && hit / tot >= 0.6) found.push(w);
+    }
+    if (found.length >= 2) break;
+  }
+  return found;
+}
+
 function findHits(text, words) {
   const hits = [];
   for (const w of words) {
     let idx = text.indexOf(w);
     while (idx !== -1) {
-      const before = text.slice(Math.max(0, idx - 2), idx);
-      const negated = /[不没别无]$/.test(before) || before.endsWith('不是') || before.endsWith('没有');
+      const b3 = text.slice(Math.max(0, idx - 3), idx);
+      const negated = !/(特别|分别|告别|差别)$/.test(b3) && /[不没无别未]$/.test(b3);
       hits.push({ word: w, index: idx, negated });
       idx = text.indexOf(w, idx + w.length);
     }
@@ -80,7 +143,7 @@ function findHits(text, words) {
 }
 
 function analyzeText(text) {
-  text = String(text || '');
+  text = normalizeText(String(text || ''));
   const elScores = { water: 0, fire: 0, earth: 0, air: 0 };
   const elHits = { water: [], fire: [], earth: [], air: [] };
   const negatedHits = [];
@@ -105,6 +168,13 @@ function analyzeText(text) {
   const emoCats = Object.keys(emoHits).sort((a, b) => emoHits[b].length - emoHits[a].length);
   const mainEmotion = emoCats.length ? emoCats[0] : null;
 
+  // 精确零命中时启用模糊弱匹配兜底
+  let fuzzyUsed = false;
+  if (Object.values(elScores).every(v => v === 0)) {
+    for (const k of Object.keys(EL_LEXICON)) {
+      for (const w of fuzzyHits(text, k)) { elScores[k] += 1; elHits[k].push({ word: w + '(近似)', weight: 1, weak: true }); fuzzyUsed = true; }
+    }
+  }
   const sorted = Object.keys(elScores).sort((a, b) => elScores[b] - elScores[a]);
   const dominant = elScores[sorted[0]] > 0 ? sorted[0] : null;
   const totalHits = Object.values(elHits).reduce((s, a) => s + a.length, 0) + emoTotal;
@@ -127,14 +197,15 @@ function analyzeText(text) {
   }
 
   const weighted = Object.values(elScores).reduce((s, v) => s + v, 0) + emoTotal;
-  const confidence = weighted >= 6 ? '高' : weighted >= 3 ? '中' : weighted >= 1 ? '低' : '无';
+  let confidence = weighted >= 6 ? '高' : weighted >= 3 ? '中' : weighted >= 1 ? '低' : '无';
+  if (fuzzyUsed && confidence !== '无') confidence = '低';
   // 存为记录时的证据权重：元素分 >=3 -> 2 分，1-2 -> 1 分
   const evidence = Object.keys(elScores).filter(k => elScores[k] > 0)
     .map(k => ({ element: k, weight: elScores[k] >= 3 ? 2 : 1 }));
 
   return {
     scores: elScores, hits: elHits, negatedHits, emotions: emoHits, mainEmotion,
-    dominant, mood, confidence, totalHits, evidence,
+    dominant, mood, confidence, totalHits, evidence, fuzzyUsed,
     attributes: dominant ? EL_ATTRIBUTES[dominant] : []
   };
 }

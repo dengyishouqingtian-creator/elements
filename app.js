@@ -409,6 +409,7 @@ function renderAutoResult(r, text) {
   const emoWords = Object.values(r.emotions).flat().join('、');
   html += `<div class="mood-box"><p><strong>心情推算：${esc(r.mood.label)}</strong>（置信度：${r.confidence}）</p>` +
     `<p>${esc(r.mood.desc)}</p>` +
+    (r.fuzzyUsed ? '<p class="obs-meta">本次为近似匹配（词库无精确词，按相近表达推算），置信度已下调。</p>' : '') +
     (emoWords ? `<p class="obs-meta">情绪命中词：${esc(emoWords)}</p>` : '') +
     (r.negatedHits.length ? `<p class="obs-meta">否定表达未计分：${r.negatedHits.map(h => esc(h.word)).join('、')}</p>` : '') +
     '<p class="obs-meta">推算依据：四象元素规则 + 情绪词库，本地计算。不是心理诊断。</p></div>';
@@ -421,7 +422,7 @@ $('btnAuto').onclick = () => {
   lastAuto = analyzeText(text); lastAutoText = text;
   renderAutoResult(lastAuto, text);
   $('btnAutoSave').disabled = !lastAuto.evidence.length;
-  if (!lastAuto.evidence.length) alert('这条输入没有命中元素关键词，可以先手动添加记录，或把行为写得更具体。');
+  if (!lastAuto.evidence.length && !lastAuto.mainEmotion) alert('这条输入没有命中元素关键词，可以先手动添加记录，或把行为写得更具体。');
 };
 $('btnAutoSave').onclick = () => {
   if (!lastAuto || !currentPersonId) return;
