@@ -46,6 +46,17 @@
     <h3 id="detailTitle"></h3>
     <p id="detailMeta" class="detail-meta"></p>
 
+    <section class="panel auto-panel">
+      <div class="panel-head"><h4>自动分析（输入即出结果）</h4></div>
+      <p class="obs-meta">写下你看到的一件事、或他说的一句话，本地自动分析出元素倾向、人物属性和心情推算。全程在你浏览器里算，不联网、不调 API。规则推算不是读心，结果都带命中词证据，可修改。</p>
+      <textarea id="autoInput" rows="3" maxlength="300" placeholder="如：他今天很生气，催大家赶紧把方案做完，一定要拿第一"></textarea>
+      <div class="toolbar-btns" style="margin-top:8px">
+        <button id="btnAuto" class="btn btn-primary">自动分析</button>
+        <button id="btnAutoSave" class="btn" disabled>按分析结果存为记录</button>
+      </div>
+      <div id="autoResult"></div>
+    </section>
+
     <div class="detail-grid">
       <div class="panel">
         <div class="panel-head">
@@ -98,6 +109,7 @@
   <form method="dialog" class="form" id="formObs">
     <h3 id="obsFormTitle">添加观察记录</h3>
     <label>行为描述 *<textarea id="oContent" required rows="3" maxlength="300" placeholder="写具体做了什么，不写结论性标签"></textarea></label>
+    <button type="button" id="btnAutoFill" class="btn btn-sm">按描述自动勾选元素</button>
     <label>情境 *<input id="oContext" required maxlength="30" placeholder="如：小组讨论 / 课程项目 / 社团活动"></label>
     <label>日期 *<input id="oDate" type="date" required></label>
     <label>信息来源 *
@@ -130,6 +142,7 @@
 </dialog>
 
 <footer class="foot">ELEMENTS V1 原型 · 本工具生成的画像是基于有限观察的探索性结果，不是心理诊断或人格测量。</footer>
+<script src="auto.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

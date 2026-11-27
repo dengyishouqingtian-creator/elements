@@ -72,3 +72,8 @@ dialog::backdrop{background:rgba(16,24,39,.5)}
 .form-btns{display:flex;justify-content:flex-end;gap:8px}
 .file-label{display:inline-flex;align-items:center}
 .foot{text-align:center;color:var(--muted);font-size:12px;padding:18px}
+.auto-panel{margin-top:6px}
+.auto-panel textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff;resize:vertical}
+.mood-box{background:#f7f3e8;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:10px}
+.mood-box p{margin:4px 0;font-size:14px}
+.attr-chip{display:inline-block;font-size:12px;border-radius:999px;padding:2px 9px;margin:2px 4px 2px 0;background:#eef1f5;color:var(--graphite);border:1px solid var(--line)}

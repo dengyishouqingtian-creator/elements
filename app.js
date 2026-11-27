@@ -164,6 +164,15 @@ function buildReport(person, observations) {
   }
   html += '</div>';
 
+  if (typeof recentMood === 'function') {
+    const rm = recentMood(observations, r.mainElement);
+    if (rm) {
+      html += '<div class="report-block"><h5>近期心情推算（最近 ' + rm.basedOn + ' 条记录）</h5>' +
+        `<p><strong>${esc(rm.label)}</strong>：${esc(rm.desc)}</p>` +
+        '<p class="obs-meta">这是按四象规则对记录中情绪词的推算，不是读心；记录里写清当时的表情、语气、原话会更准。</p></div>';
+    }
+  }
+
   const supporting = observations.filter(o => o.source !== 'inference' && (o.evidence || []).length);
   if (supporting.length) {
     html += '<div class="report-block"><h5>支持证据</h5><ul>' +
@@ -231,7 +240,7 @@ function renderObs() {
     const tags = (o.evidence || []).map(ev => `<span class="tag" style="background:${ELEMENTS[ev.element].color}">${ELEMENTS[ev.element].name} ${ev.weight}</span>`).join('');
     return `<div class="obs-item"><p>${esc(o.content)}</p>
       <p class="obs-meta">${esc(o.date)} · ${esc(o.context)} · ${SOURCE_LABEL[o.source]}</p>
-      <p>${tags}</p>${o.notes ? `<p class="obs-meta">其他解释：${esc(o.notes)}</p>` : ''}
+      <p>${tags}</p>${o.autoMood ? `<p class="obs-meta">自动分析心情：${esc(o.autoMood.label)}（置信度 ${esc(o.autoMood.confidence)}）</p>` : ''}${o.notes ? `<p class="obs-meta">其他解释：${esc(o.notes)}</p>` : ''}
       <div class="obs-btns"><button class="btn btn-sm" onclick="editObs('${o.id}')">编辑</button>
       <button class="btn btn-sm btn-danger" onclick="deleteObs('${o.id}')">删除</button></div></div>`;
   }).join('');
@@ -257,7 +266,7 @@ window.deleteObs = function (id) {
   data.observations = data.observations.filter(x => x.id !== id);
   const p = data.persons.find(x => x.id === currentPersonId);
   if (p) p.observationIds = data.observations.filter(o => o.personId === p.id).map(o => o.id);
-  saveData(); renderObs(); if (p) buildReport(p, data.observations.filter(o => o.personId === p.id)); renderPersons();
+  saveData(); renderObs(); if (p) buildReport(p, data.observations.filter(o => o.personId === p.id)); 
 };
 
 /* 人物表单 */
@@ -373,6 +382,75 @@ $('btnClearAll').onclick = () => {
   if (!confirm('清空全部人物、记录和分析？不可恢复，建议先导出备份。')) return;
   data = { version: 1, persons: [], observations: [], analyses: [] };
   currentPersonId = null; saveData(); $('detail').classList.add('hidden'); renderPersons();
+};
+
+renderPersons();
+
+/* ---------- 自动分析（auto.js 本地规则引擎） ---------- */
+let lastAuto = null, lastAutoText = '';
+function renderAutoResult(r, text) {
+  const box = $('autoResult');
+  const maxScore = Math.max(3, ...EL_KEYS.map(k => r.scores[k]));
+  let html = '';
+  EL_KEYS.forEach(k => {
+    const e = ELEMENTS[k];
+    const hits = r.hits[k].map(h => h.word).join('、');
+    html += `<div class="score-row"><span class="s-name" style="color:${e.color}">${e.name}·${e.label}</span>` +
+      `<span class="bar"><i style="width:${Math.round(r.scores[k] / maxScore * 100)}%;background:${e.color}"></i></span>` +
+      `<span class="s-val">${r.scores[k]} 分</span></div>` +
+      (hits ? `<p class="obs-meta" style="margin:-4px 0 6px 84px">命中词：${esc(hits)}</p>` : '');
+  });
+  if (r.dominant) {
+    html += '<div class="report-block"><h5>人物属性（本条输入反映）</h5><p>' +
+      `<strong>主元素：${ELEMENTS[r.dominant].name}·${ELEMENTS[r.dominant].label}</strong></p><p>` +
+      r.attributes.map(a => `<span class="attr-chip">${esc(a)}</span>`).join('') + '</p>' +
+      '<p class="obs-meta">这是这一条输入反映的属性，长期画像以左侧多条记录的报告为准。</p></div>';
+  }
+  const emoWords = Object.values(r.emotions).flat().join('、');
+  html += `<div class="mood-box"><p><strong>心情推算：${esc(r.mood.label)}</strong>（置信度：${r.confidence}）</p>` +
+    `<p>${esc(r.mood.desc)}</p>` +
+    (emoWords ? `<p class="obs-meta">情绪命中词：${esc(emoWords)}</p>` : '') +
+    (r.negatedHits.length ? `<p class="obs-meta">否定表达未计分：${r.negatedHits.map(h => esc(h.word)).join('、')}</p>` : '') +
+    '<p class="obs-meta">推算依据：四象元素规则 + 情绪词库，本地计算。不是心理诊断。</p></div>';
+  box.innerHTML = html;
+}
+$('btnAuto').onclick = () => {
+  const text = $('autoInput').value.trim();
+  if (!text) { alert('先输入一件事或一句话再分析。'); return; }
+  if (typeof analyzeText !== 'function') { alert('自动分析引擎未加载，请刷新页面重试。'); return; }
+  lastAuto = analyzeText(text); lastAutoText = text;
+  renderAutoResult(lastAuto, text);
+  $('btnAutoSave').disabled = !lastAuto.evidence.length;
+  if (!lastAuto.evidence.length) alert('这条输入没有命中元素关键词，可以先手动添加记录，或把行为写得更具体。');
+};
+$('btnAutoSave').onclick = () => {
+  if (!lastAuto || !currentPersonId) return;
+  const o = {
+    id: uid('o_'), personId: currentPersonId, source: 'observed', context: '自动分析',
+    date: new Date().toISOString().slice(0, 10), content: lastAutoText,
+    evidence: lastAuto.evidence, eventId: uid('evt_'), notes: '',
+    autoMood: { label: lastAuto.mood.label, desc: lastAuto.mood.desc, confidence: lastAuto.confidence }
+  };
+  data.observations.push(o);
+  const p = data.persons.find(x => x.id === currentPersonId);
+  if (p) { p.observationIds = data.observations.filter(x => x.personId === p.id).map(x => x.id); p.updatedAt = nowISO(); }
+  saveData(); renderObs(); if (p) buildReport(p, data.observations.filter(x => x.personId === p.id)); renderPersons();
+  $('btnAutoSave').disabled = true;
+  alert('已存为记录，报告已更新。来源默认“亲眼观察”，如不对可在记录里编辑修改。');
+};
+$('btnAutoFill').onclick = () => {
+  const text = $('oContent').value.trim();
+  if (!text) { alert('先写行为描述，再自动勾选。'); return; }
+  if (typeof analyzeText !== 'function') { alert('自动分析引擎未加载，请刷新页面重试。'); return; }
+  const r = analyzeText(text);
+  if (!r.evidence.length) { alert('没有命中元素关键词，把行为写得更具体些，或手动勾选。'); return; }
+  document.querySelectorAll('.ev-check').forEach(c => { c.checked = false; });
+  for (const ev of r.evidence) {
+    const c = document.querySelector(`.ev-check[data-el="${ev.element}"]`);
+    const s = document.querySelector(`.ev-weight[data-el="${ev.element}"]`);
+    if (c) c.checked = true; if (s) s.value = String(ev.weight);
+  }
+  alert('已按自动分析勾选：' + r.evidence.map(ev => ELEMENTS[ev.element].name + ev.weight + '分').join('、') + '。保存前你可以再改。');
 };
 
 renderPersons();
