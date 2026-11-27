@@ -8,10 +8,10 @@ const SCORING_VERSION = 'v1';
 
 /* ---------- elements.js ---------- */
 const ELEMENTS = {
-  water: { name: '水', label: '感受与关系', color: '#4C91C8' },
-  fire:  { name: '火', label: '行动与目标', color: '#E58B48' },
-  earth: { name: '土', label: '秩序与责任', color: '#78966C' },
-  air:   { name: '风', label: '探索与自由', color: '#8A83B8' }
+  water: { name: '水', label: '感受与关系', color: '#2878D0', deep: '#18549B', light: '#E8F2FC' },
+  fire:  { name: '火', label: '行动与目标', color: '#D94B4B', deep: '#A92F35', light: '#FCECEC' },
+  earth: { name: '土', label: '秩序与责任', color: '#D6A52D', deep: '#8C6410', light: '#FBF3D9' },
+  air:   { name: '风', label: '探索与自由', color: '#269B70', deep: '#176C4C', light: '#E7F5EE' }
 };
 const EL_KEYS = Object.keys(ELEMENTS);
 const SOURCE_LABEL = { observed: '亲眼观察', self_report: '对方亲口表达', inference: '推测（不计分）' };
@@ -147,7 +147,7 @@ function buildReport(person, observations) {
   let html = '';
   EL_KEYS.forEach(k => {
     const e = ELEMENTS[k];
-    html += `<div class="score-row"><span class="s-name" style="color:${e.color}">${e.name}·${e.label}</span>` +
+    html += `<div class="score-row"><span class="s-name" style="color:${e.deep}">${e.name}·${e.label}</span>` +
       `<span class="bar"><i style="width:${Math.round(r.scores[k] / maxScore * 100)}%;background:${e.color}"></i></span>` +
       `<span class="s-val">${r.scores[k]} 分 · ${r.eventCounts[k]} 事件</span></div>` +
       `<p class="obs-meta" style="margin:-4px 0 6px 84px">等级：${r.levels[k]}</p>`;
@@ -200,20 +200,67 @@ function buildReport(person, observations) {
 /* ---------- profile / app ---------- */
 const $ = id => document.getElementById(id);
 
+function elIndex(scores, n) {
+  const idx = {};
+  EL_KEYS.forEach(k => { idx[k] = n ? Math.min(100, Math.round(scores[k] / (2 * n) * 100)) : 0; });
+  return idx;
+}
+
+function renderStats() {
+  const grid = $('statsGrid');
+  if (!grid) return;
+  const totalObs = data.observations.length;
+  const scoredObs = data.observations.filter(o => o.source !== 'inference').length;
+  const dist = { water: 0, fire: 0, earth: 0, air: 0 };
+  let withMain = 0;
+  for (const p of data.persons) {
+    const r = computeScores(data.observations.filter(o => o.personId === p.id));
+    if (r.mainElement) { dist[r.mainGroup[0]]++; withMain++; }
+  }
+  const card = (num, label) => `<div class="stat-card"><div class="stat-num">${num}</div><div class="stat-label">${label}</div></div>`;
+  let donutHtml;
+  if (!withMain) {
+    donutHtml = `<div class="donut" style="background:#E9E4D8"><div class="donut-hole">0</div></div><div class="donut-legend">主要线索分布<br><span style="color:var(--muted)">暂无达到判断条件的人物</span></div>`;
+  } else {
+    let acc = 0; const parts = [];
+    EL_KEYS.forEach(k => {
+      if (!dist[k]) return;
+      const from = acc / withMain * 360; acc += dist[k]; const to = acc / withMain * 360;
+      parts.push(`${ELEMENTS[k].color} ${from}deg ${to}deg`);
+    });
+    const legend = EL_KEYS.filter(k => dist[k]).map(k => `<span class="dot" style="background:${ELEMENTS[k].color}"></span>${ELEMENTS[k].name} ${dist[k]} 人`).join('<br>');
+    donutHtml = `<div class="donut" style="background:conic-gradient(${parts.join(',')})"><div class="donut-hole">${withMain}</div></div><div class="donut-legend">主要线索分布<br>${legend}</div>`;
+  }
+  grid.innerHTML = card(data.persons.length, '观察对象（人物档案）') + card(totalObs, '观察记录总数') +
+    card(scoredObs, '有效计分记录') + card(withMain, '已形成主要线索的人物') +
+    `<div class="stat-card donut-card">${donutHtml}</div>`;
+}
+
 function renderPersons() {
+  renderStats();
   const list = $('personList');
   list.innerHTML = '';
   $('emptyHint').style.display = data.persons.length ? 'none' : 'block';
   for (const p of data.persons) {
     const obs = data.observations.filter(o => o.personId === p.id);
     const r = computeScores(obs);
+    const n = obs.filter(o => o.source !== 'inference').length;
+    const idx = elIndex(r.scores, n);
+    const domKey = r.mainElement || EL_KEYS.reduce((a, b) => idx[a] >= idx[b] ? a : b);
     const card = document.createElement('div');
     card.className = 'person-card';
     let chips = '';
-    if (r.mainElement) chips = r.mainGroup.map(k => `<span class="chip" style="background:${ELEMENTS[k].color}">主·${ELEMENTS[k].name}</span>`).join('') +
-      r.secondaryElements.map(k => `<span class="chip" style="background:${ELEMENTS[k].color};opacity:.65">副·${ELEMENTS[k].name}</span>`).join('');
-    else chips = '<span class="chip" style="background:#9aa3ad">证据不足</span>';
-    card.innerHTML = `<h3>${esc(p.alias)}</h3><p>${esc(p.relationship)}${p.description ? ' · ' + esc(p.description) : ''}</p><p>${obs.length} 条观察记录</p><div class="chips">${chips}</div>`;
+    if (r.mainElement) chips = r.mainGroup.map(k => `<span class="chip${k === 'earth' ? ' chip-earth' : ''}" style="background:${ELEMENTS[k].color}">主要线索·${ELEMENTS[k].name}</span>`).join('') +
+      r.secondaryElements.map(k => `<span class="chip${k === 'earth' ? ' chip-earth' : ''}" style="background:${ELEMENTS[k].color};opacity:.65">副·${ELEMENTS[k].name}</span>`).join('');
+    else chips = '<span class="chip" style="background:#9AA3AD">证据不足</span>';
+    let mini;
+    if (!n) mini = '<div class="mini-note">暂无互动记录</div>';
+    else {
+      mini = '<div class="mini-bars">' + EL_KEYS.map(k =>
+        `<div class="mini-row"><span class="m-name" style="color:${ELEMENTS[k].deep}">${ELEMENTS[k].name}</span><span class="mini-bar"><i style="width:${idx[k]}%;background:${ELEMENTS[k].color}"></i></span><span class="mini-val">${idx[k]}</span></div>`).join('') +
+        (n < 5 ? '<div class="mini-note">四象线索指数（0–100）· 记录不足，继续观察</div>' : '<div class="mini-note">四象线索指数（0–100），不是人格测量百分比</div>') + '</div>';
+    }
+    card.innerHTML = `<div class="pc-bar" style="background:${n ? ELEMENTS[domKey].color : '#D8D2C4'}"></div><div class="pc-body"><h3>${esc(p.alias)}</h3><p>${esc(p.relationship)}${p.description ? ' · ' + esc(p.description) : ''}</p><p>${obs.length} 条观察记录</p><div class="chips">${chips}</div>${mini}</div>`;
     card.onclick = () => openDetail(p.id);
     list.appendChild(card);
   }
@@ -385,6 +432,10 @@ $('btnClearAll').onclick = () => {
 };
 
 renderPersons();
+const heroCreate = $('btnHeroCreate');
+if (heroCreate) heroCreate.onclick = () => $('btnAddPerson').click();
+const heroExplore = $('btnHeroExplore');
+if (heroExplore) heroExplore.onclick = () => $('featBlk').scrollIntoView({ behavior: 'smooth' });
 
 /* ---------- 自动分析（auto.js 本地规则引擎） ---------- */
 let lastAuto = null, lastAutoText = '';
@@ -395,7 +446,7 @@ function renderAutoResult(r, text) {
   EL_KEYS.forEach(k => {
     const e = ELEMENTS[k];
     const hits = r.hits[k].map(h => h.word).join('、');
-    html += `<div class="score-row"><span class="s-name" style="color:${e.color}">${e.name}·${e.label}</span>` +
+    html += `<div class="score-row"><span class="s-name" style="color:${e.deep}">${e.name}·${e.label}</span>` +
       `<span class="bar"><i style="width:${Math.round(r.scores[k] / maxScore * 100)}%;background:${e.color}"></i></span>` +
       `<span class="s-val">${r.scores[k]} 分</span></div>` +
       (hits ? `<p class="obs-meta" style="margin:-4px 0 6px 84px">命中词：${esc(hits)}</p>` : '');
