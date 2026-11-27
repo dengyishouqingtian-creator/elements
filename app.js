@@ -410,6 +410,7 @@ function renderAutoResult(r, text) {
   html += `<div class="mood-box"><p><strong>心情推算：${esc(r.mood.label)}</strong>（置信度：${r.confidence}）</p>` +
     `<p>${esc(r.mood.desc)}</p>` +
     (r.fuzzyUsed ? '<p class="obs-meta">本次为近似匹配（词库无精确词，按相近表达推算），置信度已下调。</p>' : '') +
+    (r.modifiers && (r.modifiers.intensity || r.modifiers.frequency) ? `<p class="obs-meta">修饰标记：${r.modifiers.intensity ? '表达强度 ' + r.modifiers.intensity.label + '（“' + esc(r.modifiers.intensity.word) + '”）' : ''}${r.modifiers.intensity && r.modifiers.frequency ? ' · ' : ''}${r.modifiers.frequency ? '出现频率 ' + r.modifiers.frequency.label + '（“' + esc(r.modifiers.frequency.word) + '”）' : ''}——只作标记，不改变分数</p>` : '') +
     (emoWords ? `<p class="obs-meta">情绪命中词：${esc(emoWords)}</p>` : '') +
     (r.negatedHits.length ? `<p class="obs-meta">否定表达未计分：${r.negatedHits.map(h => esc(h.word)).join('、')}</p>` : '') +
     '<p class="obs-meta">推算依据：四象元素规则 + 情绪词库，本地计算。不是心理诊断。</p></div>';
@@ -422,7 +423,10 @@ $('btnAuto').onclick = () => {
   lastAuto = analyzeText(text); lastAutoText = text;
   renderAutoResult(lastAuto, text);
   $('btnAutoSave').disabled = !lastAuto.evidence.length;
-  if (!lastAuto.evidence.length && !lastAuto.mainEmotion) alert('这条输入没有命中元素关键词，可以先手动添加记录，或把行为写得更具体。');
+  if (!lastAuto.evidence.length && !lastAuto.mainEmotion) {
+    $('autoResult').innerHTML = '<div class="mood-box"><p><strong>暂时没有找到明确匹配</strong></p>' +
+      '<p>这不代表你的描述没有意义，只是现有知识包暂时无法准确归类，所以不计算元素分数、也不硬猜。你可以补充：这是他偶尔一次的表现还是经常如此？当时发生了什么？他具体做了什么（而不是你觉得他是什么样的人）？补充后重新分析即可。原始描述也可以先用下方“添加记录”手动保存。</p></div>';
+  }
 };
 $('btnAutoSave').onclick = () => {
   if (!lastAuto || !currentPersonId) return;

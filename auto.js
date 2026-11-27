@@ -128,16 +128,59 @@ function fuzzyHits(text, k) {
   return found;
 }
 
+
+/* ---------- 知识包 v3-P0：校园场景表达（GPT 128 条清单蒸馏的特征短语） ---------- */
+const SCENE_EL = {
+  fire: { strong: ['我来负责', '我来主持', '直接开团', '我先上', '我来回答'],
+    words: ['举手', '开团', '招人', '对答案', '冲一把', '先做了再说', '联系负责人', '自己决定', '带头说', '叫起来讨论', '出去走走', '我先开'] },
+  water: { strong: ['我来救你', '陪你聊聊', '给你讲讲'],
+    words: ['没听明白', '跟不上', '融不进去', '有什么心事', '带了点吃的', '别互相怪', '被针对', '慢慢做', '考砸了', '听听我的感受', '伤感情', '真正怎么想', '被忽略', '不太说话', '先协调', '哪里卡住了', '分工公平'] },
+  earth: { strong: ['轮流打扫', '活动流程'],
+    words: ['错题', '准考证', '放回去', '水电费', '物资', '时间节点', '看地图', '守住', '战术', '预算', '统一一下', '检查一遍', '记完整', '记下来了', '按步骤来', '基础题', '拿稳', '几点前交'] },
+  air: { strong: ['头脑风暴', '换个英雄', '新打法'],
+    words: ['别的讲法', '别的解法', '出题规律', '搞懂原理', '死记', '换个摆放', '新游戏', '线上线下', '创意主题', '研究角度', '另一种方法', '绕后', '阵容', '约会方式', '别的可能性', '更灵活', '自己的思路', '不一样的想法', '小规模测试', '换个方向', '换个方法'] }
+};
+for (const k of Object.keys(SCENE_EL)) {
+  EL_LEXICON[k].strong.push(...SCENE_EL[k].strong);
+  EL_LEXICON[k].words.push(...SCENE_EL[k].words);
+}
+
+/* 句式模式（GPT 第一批 8 种）：完整句式命中按模式分计，每元素模式分上限 2 */
+const PATTERNS = [
+  { re: /先[^。；]{0,12}然后/, el: 'fire', w: 2, name: '句式·我先…然后…' },
+  { re: /担心[^。；]{0,12}会不会/, el: 'water', w: 2, name: '句式·担心…会不会…' },
+  { re: /为了[^。；]{0,16}一直/, el: 'earth', w: 2, name: '句式·为了…一直…' },
+  { re: /有没有可能/, el: 'air', w: 2, name: '句式·有没有可能…' },
+  { re: /是不是[^。；]{0,14}我可以/, el: 'water', w: 2, name: '句式·你是不是…我可以…' },
+  { re: /既然[^。；]{0,14}那就/, el: 'fire', w: 1, name: '句式·既然…那就…' },
+  { re: /如果[^。；]{0,14}我们可以/, el: 'air', w: 1, name: '句式·如果…我们可以…' },
+  { re: /不想[^。；]{0,12}但[^。；]{0,6}又/, el: 'water', w: 1, name: '句式·不想…但又…' }
+];
+
+/* 修饰词：只作标记，不改变 1/2 分原始分数（GPT 规则） */
+const MODIFIERS = {
+  intensity: [['高', ['特别', '非常', '极其', '超级', '格外', '很']], ['中', ['比较', '挺', '蛮', '还算']], ['低', ['有点', '稍微', '略微']]],
+  frequency: [['持续性', ['总是', '一直', '每次', '几乎每次']], ['较常出现', ['经常', '常常', '大多数时候']], ['间歇性', ['偶尔', '有时候', '时不时']]]
+};
+function detectModifiers(text) {
+  const out = {};
+  for (const dim of Object.keys(MODIFIERS)) {
+    for (const [label, words] of MODIFIERS[dim]) {
+      const hit = words.find(w => text.includes(w));
+      if (hit) { out[dim] = { label, word: hit }; break; }
+    }
+  }
+  return out;
+}
+
 function findHits(text, words) {
   const hits = [];
   for (const w of words) {
-    let idx = text.indexOf(w);
-    while (idx !== -1) {
-      const b3 = text.slice(Math.max(0, idx - 3), idx);
-      const negated = !/(特别|分别|告别|差别)$/.test(b3) && /[不没无别未]$/.test(b3);
-      hits.push({ word: w, index: idx, negated });
-      idx = text.indexOf(w, idx + w.length);
-    }
+    const idx = text.indexOf(w);
+    if (idx === -1) continue;
+    const b3 = text.slice(Math.max(0, idx - 3), idx);
+    const negated = !/(特别|分别|告别|差别)$/.test(b3) && /[不没无别未]$/.test(b3);
+    hits.push({ word: w, index: idx, negated });
   }
   return hits;
 }
@@ -168,6 +211,19 @@ function analyzeText(text) {
   const emoCats = Object.keys(emoHits).sort((a, b) => emoHits[b].length - emoHits[a].length);
   const mainEmotion = emoCats.length ? emoCats[0] : null;
 
+  // 句式模式（精确/同义之后、模糊之前）
+  const patternHits = [];
+  const patByEl = { water: 0, fire: 0, earth: 0, air: 0 };
+  for (const p of PATTERNS) {
+    if (patByEl[p.el] >= 2) continue;
+    if (p.re.test(text)) {
+      const add = Math.min(p.w, 2 - patByEl[p.el]);
+      patByEl[p.el] += add; elScores[p.el] += add;
+      elHits[p.el].push({ word: p.name, weight: add, pattern: true });
+      patternHits.push(p.name);
+    }
+  }
+  const modifiers = detectModifiers(text);
   // 精确零命中时启用模糊弱匹配兜底
   let fuzzyUsed = false;
   if (Object.values(elScores).every(v => v === 0)) {
@@ -205,7 +261,7 @@ function analyzeText(text) {
 
   return {
     scores: elScores, hits: elHits, negatedHits, emotions: emoHits, mainEmotion,
-    dominant, mood, confidence, totalHits, evidence, fuzzyUsed,
+    dominant, mood, confidence, totalHits, evidence, fuzzyUsed, patternHits, modifiers,
     attributes: dominant ? EL_ATTRIBUTES[dominant] : []
   };
 }
