@@ -83,6 +83,22 @@
       <div id="autoResult"></div>
     </section>
 
+
+    <section class="panel sim-panel">
+      <div class="panel-head"><h4>模拟对话（练习沟通）</h4></div>
+      <p class="sim-disclaimer">这是规则模拟，不是本人。模拟回复由人物档案、已记录行为和本地模板生成，不代表对方真实想法。请把它用于练习表达，不要当成对方一定会这样回应的依据。模拟内容不会存入档案、不影响画像。</p>
+      <div class="toolbar-btns" style="margin:8px 0">
+        <select id="simScene"></select>
+        <button id="btnSimOpen" class="btn">用这个情景开场</button>
+        <button id="btnSimClear" class="btn btn-ghost">清空对话</button>
+      </div>
+      <div id="simLog" class="sim-log"></div>
+      <div class="sim-input-row">
+        <input id="simInput" maxlength="200" placeholder="输入你想对他说的话，回车发送">
+        <button id="btnSimSend" class="btn btn-primary">发送（模拟）</button>
+      </div>
+    </section>
+
     <div class="detail-grid">
       <div class="panel">
         <div class="panel-head">
@@ -169,6 +185,7 @@
 
 <footer class="foot">ELEMENTS V1 原型 · 本工具生成的画像是基于有限观察的探索性结果，不是心理诊断或人格测量。</footer>
 <script src="auto.js"></script>
+<script src="sim.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

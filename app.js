@@ -192,6 +192,25 @@ function buildReport(person, observations) {
   const questions = weak.slice(0, 3).map(k => `关于「${ELEMENTS[k].label}」还缺证据：他在什么场景下会表现出${ELEMENTS[k].name}的一面？`);
   if (!questions.length) questions.push('有没有出现过与当前主倾向相反的行为？记下来能让画像更准。');
   html += '<div class="report-block"><h5>下一步需要了解的问题</h5><ul>' + questions.map(q => `<li>${esc(q)}</li>`).join('') + '</ul></div>';
+  if (typeof GUIDES !== 'undefined') {
+    html += '<div class="report-block"><h5>相处指南（把画像翻译成能照着做的事）</h5>';
+    if (r.mainElement) {
+      const g = GUIDES[r.mainElement];
+      const evRecs = observations.filter(o => o.source !== 'inference' && (o.evidence || []).some(e => e.element === r.mainElement)).slice(0, 2);
+      html += `<p class="obs-meta">按他的主要线索（${ELEMENTS[r.mainElement].name}·${ELEMENTS[r.mainElement].label}）生成的通用框架${evRecs.length ? '，并附记录依据' : '；暂无直接记录支持的部分请当通用参考'}。记录与模板矛盾时，以记录为准。</p>`;
+      if (evRecs.length) html += '<p>记录依据：' + evRecs.map(o => '「' + esc(o.content) + '」').join('、') + '</p>';
+      for (const [sec, title] of GUIDE_SECTIONS) {
+        html += `<div class="guide-sec"><h6>${title}</h6><ul>` + g[sec].map(t => `<li>${esc(t)}</li>`).join('') + '</ul></div>';
+      }
+      if (r.secondaryElements && r.secondaryElements.length) html += `<p class="obs-meta">${esc(SECONDARY_TIP[r.secondaryElements[0]])}</p>`;
+    } else {
+      html += '<p class="obs-meta">暂无个人记录或主要线索未形成，以下为通用沟通版，仅供一般参考。</p>';
+      for (const [sec, title] of GUIDE_SECTIONS) {
+        html += `<div class="guide-sec"><h6>${title}</h6><ul>` + GENERIC_GUIDE[sec].map(t => `<li>${esc(t)}</li>`).join('') + '</ul></div>';
+      }
+    }
+    html += '</div>';
+  }
   html += '<p class="disclaimer">本报告是基于有限观察的探索性画像（评分规则 ' + SCORING_VERSION + '），不是心理诊断或人格测量。结论会随新记录修正。</p>';
   box.innerHTML = html;
   return r;
@@ -461,6 +480,8 @@ function renderAutoResult(r, text) {
   html += `<div class="mood-box"><p><strong>心情推算：${esc(r.mood.label)}</strong>（置信度：${r.confidence}）</p>` +
     `<p>${esc(r.mood.desc)}</p>` +
     (r.fuzzyUsed ? '<p class="obs-meta">本次为近似匹配（词库无精确词，按相近表达推算），置信度已下调。</p>' : '') +
+    (r.scene ? `<p class="obs-meta">识别情景：<strong>${esc(r.scene.name)}</strong>（置信度 ${r.scene.confidence}${r.scene.second ? '，也可能涉及' + esc(r.scene.second) : ''}）｜这个情景下看人：${esc(r.scene.focus)}</p>` : '') +
+    (r.scene && r.scene.interpretation ? `<div class="mood-box"><p><strong>情景化解读</strong>：${esc(r.scene.interpretation)}</p></div>` : '') +
     (r.modifiers && (r.modifiers.intensity || r.modifiers.frequency) ? `<p class="obs-meta">修饰标记：${r.modifiers.intensity ? '表达强度 ' + r.modifiers.intensity.label + '（“' + esc(r.modifiers.intensity.word) + '”）' : ''}${r.modifiers.intensity && r.modifiers.frequency ? ' · ' : ''}${r.modifiers.frequency ? '出现频率 ' + r.modifiers.frequency.label + '（“' + esc(r.modifiers.frequency.word) + '”）' : ''}——只作标记，不改变分数</p>` : '') +
     (emoWords ? `<p class="obs-meta">情绪命中词：${esc(emoWords)}</p>` : '') +
     (r.negatedHits.length ? `<p class="obs-meta">否定表达未计分：${r.negatedHits.map(h => esc(h.word)).join('、')}</p>` : '') +
@@ -510,3 +531,59 @@ $('btnAutoFill').onclick = () => {
 };
 
 renderPersons();
+
+/* ---------- 模拟对话 UI（与真实记录隔离：只存在页面内存里） ---------- */
+let simRounds = [];
+function simProfile() {
+  const obs = data.observations.filter(o => o.personId === currentPersonId);
+  const r = computeScores(obs);
+  const scored = obs.filter(o => o.source !== 'inference');
+  return {
+    mainElement: r.mainElement, secondary: r.secondaryElements && r.secondaryElements[0],
+    secondaryName: r.secondaryElements && r.secondaryElements[0] ? ELEMENTS[r.secondaryElements[0]].name : null,
+    obsCount: scored.length,
+    evidenceCount: r.mainElement ? obs.filter(o => (o.evidence || []).some(e => e.element === r.mainElement)).length : 0
+  };
+}
+function simPush(cls, text) {
+  const d = document.createElement('div');
+  d.className = 'bubble ' + cls; d.textContent = text;
+  $('simLog').appendChild(d); $('simLog').scrollTop = 1e6;
+}
+function simPushWhy(html) {
+  const d = document.createElement('div');
+  d.className = 'sim-why'; d.innerHTML = html;
+  $('simLog').appendChild(d); $('simLog').scrollTop = 1e6;
+}
+if ($('simScene') && typeof SIM_SCENES !== 'undefined') {
+  $('simScene').innerHTML = SIM_SCENES.map(([id, name]) => `<option value="${id}">${name}</option>`).join('');
+  $('btnSimOpen').onclick = () => {
+    if (!currentPersonId) { alert('先打开一个人物档案，再开始模拟对话。'); return; }
+    const p = simProfile();
+    const sceneId = $('simScene').value;
+    const op = OPENINGS[sceneId];
+    const line = op[p.mainElement || 'neutral'] || op.neutral;
+    const sceneName = (SIM_SCENES.find(x => x[0] === sceneId) || [])[1] || '';
+    simPush('bubble-him', '（情景：' + sceneName + '）' + line);
+    simPushWhy(`<p>这是按${p.mainElement ? '他的主要线索（' + ELEMENTS[p.mainElement].name + '）' : '中性模板'}生成的开场回应。${esc(p.obsCount ? '' : '暂无该人物记录，当前仅为通用情景演示。')}</p>`);
+    simRounds = [];
+  };
+  $('btnSimClear').onclick = () => { $('simLog').innerHTML = ''; simRounds = []; };
+  const doSimSend = () => {
+    if (!currentPersonId) { alert('先打开一个人物档案，再开始模拟对话。'); return; }
+    const text = $('simInput').value.trim();
+    if (!text) return;
+    $('simInput').value = '';
+    simPush('bubble-me', text);
+    const p = simProfile();
+    const res = simulateReply(p, text);
+    simPush('bubble-him', res.reply);
+    simPushWhy(`<p><strong>话语类型</strong>：${esc(res.speech.name)}｜<strong>可能原因</strong>：${esc(res.why)}</p>` +
+      `<p><strong>沟通建议</strong>：${esc(res.advice)}</p>` +
+      `<p><strong>不确定性</strong>：${esc(res.tier)}（模拟可信度：${res.confidence}）。这是规则推测，不是他本人真实想法。</p>`);
+    simRounds.push({ text, reply: res.reply });
+    if (simRounds.length > 3) simRounds.shift();
+  };
+  $('btnSimSend').onclick = doSimSend;
+  $('simInput').addEventListener('keydown', e => { if (e.key === 'Enter') doSimSend(); });
+}

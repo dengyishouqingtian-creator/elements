@@ -224,6 +224,7 @@ function analyzeText(text) {
     }
   }
   const modifiers = detectModifiers(text);
+  const scene = (typeof detectScene === 'function') ? detectScene(text) : null;
   // 精确零命中时启用模糊弱匹配兜底
   let fuzzyUsed = false;
   if (Object.values(elScores).every(v => v === 0)) {
@@ -261,7 +262,7 @@ function analyzeText(text) {
 
   return {
     scores: elScores, hits: elHits, negatedHits, emotions: emoHits, mainEmotion,
-    dominant, mood, confidence, totalHits, evidence, fuzzyUsed, patternHits, modifiers,
+    dominant, mood, confidence, totalHits, evidence, fuzzyUsed, patternHits, modifiers, scene,
     attributes: dominant ? EL_ATTRIBUTES[dominant] : []
   };
 }
@@ -290,3 +291,52 @@ function recentMood(observations, mainElement) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { analyzeText, recentMood, EL_LEXICON, EMOTIONS, MOOD_RULES, EL_ATTRIBUTES };
 }
+
+/* ---------- 知识包 P1：情景识别与情景化解读（GPT 规格） ---------- */
+const SCENES = {
+  class: { name: '上课课堂', kw: ['上课', '老师', '课堂', '提问', '发言', '举手', '听课', '同桌', '讲台', '早读', '晚自习'], focus: '水看互动感受 · 火看主动表达 · 土看听课秩序 · 风看观点探索',
+    silent: '可能在听课、思考、不熟悉讨论内容，或不想公开发言。下一步：课后询问是否理解内容、是否有想补充的观点。不能下结论说他没有想法。' },
+  exam: { name: '考试学习', kw: ['考试', '考试前', '复习', '成绩', '测验', '交卷', '错题', '备考', '期末', '刷题', '背书'], focus: '水看压力与支持 · 火看行动动力 · 土看计划和准备 · 风看思路和方法',
+    silent: '可能在专注复习、思考题目、减少干扰，或感到压力。下一步：询问是否需要一起复习或讨论题目。不能下结论说他冷漠。' },
+  dorm: { name: '宿舍生活', kw: ['宿舍', '室友', '寝室', '熄灯', '打扫', '卫生', '上铺', '下铺', '门禁'], focus: '水看关系氛围 · 火看主动协调 · 土看规则和责任 · 风看空间和自由',
+    silent: '可能疲惫、想独处、正在做其他事情，或暂时没有话题。下一步：询问是否方便交流，不要强迫立即回应。不能下结论说他不喜欢室友。' },
+  club: { name: '社团活动', kw: ['社团', '招新', '排练', '部长', '报名', '策划', '开会', '活动现场'], focus: '水看成员关系 · 火看参与和带动 · 土看分工执行 · 风看创意和变化',
+    silent: '可能在听其他人讨论、不了解活动安排，或暂时没有明确意见。下一步：邀请其表达意见，或明确询问是否愿意承担任务。' },
+  group: { name: '小组作业', kw: ['小组', '组队', '分工', '汇报', 'PPT', '项目', '进度', '截止', '组员', '小组作业'], focus: '水看协作感受 · 火看推进效率 · 土看责任与交付 · 风看思路和方案',
+    silent: '可能尚未看到消息、正在完成任务、没有理解分工，或遇到困难。下一步：直接询问进度和需要的协助。不能下结论说他故意拖延。' },
+  game: { name: '游戏娱乐', kw: ['打游戏', '开黑', '组队', '排位', '队友', '游戏', '匹配', '上分', '连麦'], focus: '水看团队情绪 · 火看竞技投入 · 土看配合和规则 · 风看策略和变化',
+    silent: '可能在专注游戏、操作中不方便说话、网络沟通受限，或情绪受到游戏结果影响。下一步：游戏结束后询问是否需要讨论配合问题。' },
+  love: { name: '亲密关系沟通', kw: ['对象', '约会', '冷战', '吃醋', '表白', '男朋友', '女朋友', '暧昧'], focus: '水看情感回应 · 火看表达和行动 · 土看承诺与稳定 · 风看空间和交流（只分析沟通方式，不做情感评判）',
+    silent: '可能需要整理表达、暂时不想谈、没有意识到问题，或不确定如何回应。下一步：选择合适时间，询问是否愿意谈当前问题。' },
+  family: { name: '家庭沟通', kw: ['父母', '家人', '回家', '家务', '唠叨', '长辈', '我妈', '我爸', '家里'], focus: '水看情绪理解 · 火看自主表达 · 土看责任与约定 · 风看独立空间',
+    silent: '可能不想争论、正在处理其他事情、对话题不熟悉，或需要个人空间。下一步：说明具体问题，询问什么时候方便交流。' },
+  social: { name: '聚会社交', kw: ['聚会', '吃饭', '聚餐', '派对', '陌生人', '合照', '热闹', '饭局', '唱歌'], focus: '水看关系融入 · 火看主动参与 · 土看舒适秩序 · 风看新鲜体验',
+    silent: '可能不熟悉环境、正在听别人聊天、疲惫，或暂时没有话题。下一步：邀请参与轻松话题，不要求必须活跃。不能下结论说他社交能力差。' },
+  daily: { name: '日常闲聊', kw: ['聊天', '消息', '话题', '分享', '问候', '开玩笑', '微信', '回消息'], focus: '水看交流感受 · 火看表达主动 · 土看沟通稳定性 · 风看话题和信息',
+    silent: '可能没看到消息、暂时忙碌、不知道怎么接话，或没有聊天意愿。下一步：过一段时间再联系，必要时直接询问是否方便聊天。' }
+};
+function detectScene(text) {
+  const scored = [];
+  for (const [id, sc] of Object.entries(SCENES)) {
+    let score = 0; const hits = [];
+    for (const kw of sc.kw) if (text.includes(kw)) { score += 2; hits.push(kw); }
+    if (score) scored.push({ id, name: sc.name, score, hits, focus: sc.focus, silent: sc.silent });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  if (!scored.length) return null;
+  const top = scored[0];
+  top.confidence = top.score >= 6 ? '高' : top.score >= 4 ? '中' : '低';
+  top.second = scored[1] && scored[1].score >= 3 ? scored[1].name : null;
+  const isSilent = /不说话|没说话|不回复|没回复|不回消息|沉默|不吭声|不理人|已读不回/.test(text);
+  top.interpretation = isSilent ? top.silent : null;
+  return top;
+}
+
+/* 情景类表达补强（P1 情景表达的一部分，计入功能模板账本） */
+const SCENE_EL2 = {
+  fire: ['赶进度', '催进度', '带队', '组织大家', '抢着做', '第一个交', '冲刺', '拍板', '拉群', '张罗'],
+  water: ['怕被孤立', '在意大家的看法', '怕拖累大家', '主动问候', '记得生日', '留面子', '台阶', '缓和气氛', '打圆场', '怕尴尬'],
+  earth: ['按时交', '提前交', '补交', '值日', '排班', '登记', '汇总', '对账', '留备份', '存档'],
+  air: ['换个组', '跨组', '旁听', '串场', '到处打听', '消息灵通', '新发现', '冷门', '小众', '猎奇']
+};
+for (const k of Object.keys(SCENE_EL2)) EL_LEXICON[k].words.push(...SCENE_EL2[k]);
